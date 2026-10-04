@@ -1,11 +1,11 @@
 """
 research_agent.py
-Core Agent Logic and Multi-Agent Orchestration using CrewAI and Google Gemini API.
+Core Agent Logic and Multi-Agent Orchestration using CrewAI and Groq API.
 Includes:
 - Senior Culinary & Ingredients Research Analyst Agent
 - Executive Restaurant Sommelier & Recommender Agent
 - Multi-Agent Orchestrator with RAG & Web Search tools
-- Direct resilient Gemini execution engine for guaranteed Streamlit Cloud uptime.
+- Direct resilient Groq ultra-low latency execution engine (openai/gpt-oss-120b)
 """
 
 import os
@@ -23,72 +23,34 @@ except Exception:
 
 class CulinaryResearchAgent:
     """
-    Orchestrates the AI Research Agent with RAG and Google Gemini API.
-    Follows CrewAI agent & task architecture.
+    Orchestrates the AI Culinary Research Agent with RAG and Groq API.
+    Default Model: openai/gpt-oss-120b
     """
 
     @staticmethod
     def normalize_model_name(model_name: str) -> str:
-        clean = (model_name or "").replace("models/", "").strip()
-        if not clean:
+        clean = (model_name or "").strip()
+        if not clean or clean in ["gpt-oss", "120b", "gpt-oss-120b"]:
             return "openai/gpt-oss-120b"
-        if clean in ["3.7", "gemini-3.7"]:
-            return "gemini-3.7-flash"
-        elif clean in ["3.6", "gemini-3.6"]:
-            return "gemini-3.6-flash"
-        elif clean in ["3.8", "gemini-3.8"]:
-            return "gemini-3.8-flash"
-        elif clean.startswith("3."):
-            return f"gemini-{clean}-flash"
-        elif clean in ["gpt-oss", "120b", "gpt-oss-120b"]:
-            return "openai/gpt-oss-120b"
+        if clean in ["llama", "llama-70b", "llama3"]:
+            return "llama-3.3-70b-versatile"
+        if clean in ["llama-8b", "instant"]:
+            return "llama-3.1-8b-instant"
         return clean
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "openai/gpt-oss-120b",
-        provider: str = "auto"
+        model_name: str = "openai/gpt-oss-120b"
     ):
         self.api_key = (
             api_key
-            or os.getenv("GROQ_API_KEY")
-            or os.getenv("GEMINI_API_KEY")
-            or os.getenv("GOOGLE_API_KEY", "")
+            or os.getenv("GROQ_API_KEY", "")
         )
-        self.provider = provider
         self.model_name = self.normalize_model_name(model_name)
 
-    @property
-    def is_groq(self) -> bool:
-        """
-        Determines whether the active configuration should use the Groq provider.
-        """
-        if self.provider == "groq":
-            return True
-        if self.provider == "gemini":
-            return False
-
-        key = (self.api_key or "").strip()
-        model = (self.model_name or "").lower()
-
-        if key.startswith("gsk_"):
-            return True
-        if key.startswith("AIza"):
-            return False
-
-        if "openai/" in model or "gpt-oss" in model or "llama" in model or "mixtral" in model or "gemma" in model:
-            return True
-        if "gemini" in model:
-            return False
-
-        if os.getenv("GROQ_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-            return True
-
-        return True  # Default to Groq
-
     def set_api_key(self, api_key: str):
-        self.api_key = api_key
+        self.api_key = (api_key or "").strip()
 
     def set_model(self, model_name: str):
         self.model_name = self.normalize_model_name(model_name)
@@ -96,16 +58,16 @@ class CulinaryResearchAgent:
     def _call_groq_rest(self, prompt: str, system_instruction: str = "") -> str:
         """
         Direct high-speed Groq REST API call (OpenAI-compatible).
-        Ultra-low latency inference for openai/gpt-oss-120b and Llama models.
+        Ultra-low latency inference with openai/gpt-oss-120b.
         """
         if not self.api_key:
             raise ValueError(
-                "Groq API Key is required. Please provide it in the sidebar or set GROQ_API_KEY in secrets."
+                "Groq API Key is required. Please add GROQ_API_KEY in Streamlit Cloud Secrets (Settings > Secrets) or enter it in the sidebar."
             )
 
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {self.api_key.strip()}",
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
@@ -150,193 +112,15 @@ class CulinaryResearchAgent:
 
         raise RuntimeError(f"Groq API Error: Failed with model '{self.model_name}'. Details: {last_error}")
 
-    def _call_llm(self, prompt: str, system_instruction: str = "") -> str:
-        """
-        Unified high-speed LLM call router supporting Groq (openai/gpt-oss-120b, Llama)
-        and Google Gemini.
-        """
-        if self.is_groq:
-            return self._call_groq_rest(prompt, system_instruction)
-        return self._call_gemini_rest(prompt, system_instruction)
-
-    @classmethod
-    def get_available_models(cls, api_key: str) -> List[str]:
-        """
-        Dynamically query Google Generative Language ModelService.ListModels
-        to find all models that support 'generateContent' for this API key.
-        """
-        if not api_key:
-            return []
-        for api_version in ["v1beta", "v1"]:
-            try:
-                url = f"https://generativelanguage.googleapis.com/{api_version}/models?key={api_key}"
-                resp = requests.get(url, timeout=8)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    models = []
-                    for m in data.get("models", []):
-                        methods = m.get("supportedGenerationMethods", [])
-                        if "generateContent" in methods:
-                            name = m.get("name", "").replace("models/", "")
-                            models.append(name)
-                    if models:
-                        return models
-            except Exception:
-                continue
-        return []
-
-    def _call_gemini_rest(self, prompt: str, system_instruction: str = "") -> str:
-        """
-        Direct high-speed Google Gemini REST API call.
-        Supports gemini-3.8-flash, gemini-2.0-flash, gemini-1.5-flash, and dynamic model discovery.
-        Ensures 100% reliability on Streamlit Community Cloud with automatic version & model fallback.
-        """
-        if not self.api_key:
-            raise ValueError(
-                "Google Gemini API Key is required. Please provide it in the sidebar or set GEMINI_API_KEY in secrets."
-            )
-
-        # Clean & normalize model string (handles "3.6", "3.7", "3.8", "gemini-3.6", "gemini-3.7", etc.)
-        primary_model = self.model_name.replace("models/", "").strip()
-        if primary_model in ["3.7", "gemini-3.7"]:
-            primary_model = "gemini-3.7-flash"
-        elif primary_model in ["3.6", "gemini-3.6"]:
-            primary_model = "gemini-3.6-flash"
-        elif primary_model in ["3.8", "gemini-3.8"]:
-            primary_model = "gemini-3.8-flash"
-        elif primary_model.startswith("3."):
-            primary_model = f"gemini-{primary_model}-flash"
-        elif not primary_model:
-            primary_model = "gemini-3.7-flash"
-
-        # Candidate models to try in order
-        candidate_models = [primary_model]
-        if "3.7" in primary_model:
-            for variant in ["gemini-3.7-flash", "gemini-3.7-pro", "gemini-3.7"]:
-                if variant not in candidate_models:
-                    candidate_models.append(variant)
-        elif "3.6" in primary_model:
-            for variant in ["gemini-3.6-flash", "gemini-3.6-pro", "gemini-3.6"]:
-                if variant not in candidate_models:
-                    candidate_models.append(variant)
-
-        common_fallbacks = [
-            "gemini-3.7-flash",
-            "gemini-3.6-flash",
-            "gemini-3.8-flash",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-2.0-flash-exp",
-            "gemini-pro",
-        ]
-        for fm in common_fallbacks:
-            if fm not in candidate_models:
-                candidate_models.append(fm)
-
-        headers = {"Content-Type": "application/json"}
-        
-        contents = []
-        if system_instruction:
-            contents.append({
-                "role": "user",
-                "parts": [{"text": f"SYSTEM INSTRUCTION / ROLE:\n{system_instruction}\n\nNow respond to the user query."}]
-            })
-            contents.append({
-                "role": "model",
-                "parts": [{"text": "Understood. I will act strictly according to these culinary analyst guidelines."}]
-            })
-
-        contents.append({
-            "role": "user",
-            "parts": [{"text": prompt}]
-        })
-
-        payload = {
-            "contents": contents,
-            "generationConfig": {
-                "temperature": 0.4,
-                "maxOutputTokens": 1500,
-            }
-        }
-
-        # Try across candidates and API versions
-        last_error_code = 0
-        last_error_msg = ""
-
-        for candidate in candidate_models:
-            for api_version in ["v1beta", "v1"]:
-                url = f"https://generativelanguage.googleapis.com/{api_version}/models/{candidate}:generateContent?key={self.api_key}"
-                try:
-                    response = requests.post(url, headers=headers, json=payload, timeout=25)
-                    if response.status_code == 200:
-                        data = response.json()
-                        try:
-                            # Update active model name to what worked
-                            self.model_name = candidate
-                            return data["candidates"][0]["content"]["parts"][0]["text"]
-                        except (KeyError, IndexError):
-                            return "Unable to parse response from Gemini model."
-                    elif response.status_code == 404:
-                        # Model not recognized in this API version; try next candidate
-                        last_error_code = 404
-                        last_error_msg = response.text
-                        continue
-                    else:
-                        # Non-404 error (e.g. 400 Bad Request, 403 Forbidden, 429 Quota)
-                        err_msg = response.text
-                        try:
-                            err_json = response.json()
-                            err_msg = err_json.get("error", {}).get("message", err_msg)
-                        except Exception:
-                            pass
-                        raise RuntimeError(f"Gemini API Error ({response.status_code}): {err_msg}")
-                except requests.RequestException as req_err:
-                    last_error_msg = str(req_err)
-                    continue
-
-        # If static candidates returned 404, dynamically query Google's ModelService.ListModels
-        available_models = self.get_available_models(self.api_key)
-        if available_models:
-            # Pick the best flash model or first available
-            best_model = next((m for m in available_models if "flash" in m), available_models[0])
-            for api_version in ["v1beta", "v1"]:
-                url = f"https://generativelanguage.googleapis.com/{api_version}/models/{best_model}:generateContent?key={self.api_key}"
-                try:
-                    resp = requests.post(url, headers=headers, json=payload, timeout=25)
-                    if resp.status_code == 200:
-                        self.model_name = best_model
-                        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-                except Exception:
-                    continue
-
-            avail_summary = ", ".join(available_models[:6])
-            raise RuntimeError(
-                f"Model '{primary_model}' not found (404). Supported models on your Google AI account: {avail_summary}"
-            )
-
-        raise RuntimeError(
-            f"Gemini API Error (404): Model '{primary_model}' was not found. Please verify your Gemini API key has access to modern models (e.g., gemini-2.0-flash or gemini-3.8-flash)."
-        )
-
     def run_crewai_flow(self, user_query: str) -> Dict[str, Any]:
         """
         Executes CrewAI multi-agent orchestration if CrewAI package is available.
         """
-        # Configure CrewAI LLM for Groq or Gemini
-        if self.is_groq:
-            llm = LLM(
-                model=f"groq/{self.model_name}",
-                api_key=self.api_key,
-                temperature=0.3
-            )
-        else:
-            gemini_model_string = f"gemini/{self.model_name}"
-            llm = LLM(
-                model=gemini_model_string,
-                api_key=self.api_key,
-                temperature=0.3
-            )
+        llm = LLM(
+            model=f"groq/{self.model_name}",
+            api_key=self.api_key,
+            temperature=0.3
+        )
 
         # Agent 1: Culinary Analyst
         analyst = Agent(
@@ -400,7 +184,7 @@ class CulinaryResearchAgent:
 
         result = crew.kickoff()
         return {
-            "engine": "CrewAI (Multi-Agent)",
+            "engine": f"CrewAI Multi-Agent (Groq: {self.model_name})",
             "output": str(result),
             "tool_calls": [
                 {"tool": "Menu RAG Retrieval Tool", "query": user_query},
@@ -429,12 +213,11 @@ class CulinaryResearchAgent:
             try:
                 return self.run_crewai_flow(user_query)
             except Exception as crew_err:
-                print(f"CrewAI execution notice: {crew_err}. Using direct Gemini Multi-Agent pipeline.")
+                print(f"CrewAI execution notice: {crew_err}. Using direct Groq Multi-Agent pipeline.")
 
-        # Step 3: Direct Multi-Agent LLM Pipeline (Groq / Gemini - Fast, robust, Streamlit Cloud friendly)
-        engine_brand = "Groq" if self.is_groq else "Google Gemini"
+        # Step 3: Direct Multi-Agent LLM Pipeline (Groq - Ultra-low latency)
         system_instruction = (
-            f"You are MenuFlow AI, an intelligent Culinary Concierge powered by RAG and {engine_brand}.\n"
+            "You are MenuFlow AI, an intelligent Culinary Concierge powered by RAG and Groq (openai/gpt-oss-120b).\n"
             "Your job is to read the restaurant's menu with its exact ingredients, analyze the taste and flavor "
             "profiles created by those ingredients, and recommend the best dish to a customer who is unsure what to order.\n\n"
             "GUIDELINES:\n"
@@ -470,10 +253,10 @@ class CulinaryResearchAgent:
 Format your output in clean Markdown with clear section headers, bold names, and appetizing descriptions.
 """
 
-        llm_response = self._call_llm(prompt, system_instruction=system_instruction)
+        llm_response = self._call_groq_rest(prompt, system_instruction=system_instruction)
 
         return {
-            "engine": f"Groq Ultra-Fast RAG Agent ({self.model_name})" if self.is_groq else f"Gemini RAG Agent ({self.model_name})",
+            "engine": f"Groq Ultra-Fast RAG Agent ({self.model_name})",
             "output": llm_response,
             "matching_items": matching_items,
             "tool_calls": [

@@ -31,14 +31,10 @@ def get_secret(key: str, default: str = "") -> str:
     except Exception:
         return os.getenv(key, default)
 
-# Check if Groq or Gemini key is available in Streamlit Secrets
+# Check if Groq API key is available in Streamlit Secrets
 secret_groq_key = get_secret("GROQ_API_KEY", "")
-secret_gemini_key = get_secret("GEMINI_API_KEY", "")
-secret_model = get_secret("GROQ_MODEL", get_secret("GEMINI_MODEL", "openai/gpt-oss-120b"))
-
-has_groq_key = bool(secret_groq_key and not secret_groq_key.startswith("your_"))
-has_gemini_key = bool(secret_gemini_key and not secret_gemini_key.startswith("your_"))
-has_secrets_key = has_groq_key or has_gemini_key
+secret_model = get_secret("GROQ_MODEL", "openai/gpt-oss-120b")
+has_secrets_key = bool(secret_groq_key and not secret_groq_key.startswith("your_"))
 
 # Original MenuFlow Branding & Styling
 st.markdown("""
@@ -152,7 +148,7 @@ if "menu_loaded" not in st.session_state:
 
 if "agent" not in st.session_state:
     st.session_state.agent = CulinaryResearchAgent(
-        api_key=secret_gemini_key,
+        api_key=secret_groq_key,
         model_name=secret_model
     )
 
@@ -170,41 +166,31 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # 1. LLM API Key Configuration (Groq & Gemini)
-    st.subheader("🔑 LLM Configuration")
+    # 1. Groq API Key Configuration
+    st.subheader("⚡ Groq Configuration")
     
-    if has_groq_key:
-        st.success("🟢 Groq API Key active (`GROQ_API_KEY`)")
-        api_key = secret_groq_key
-        st.session_state.agent.set_api_key(api_key)
-    elif has_gemini_key:
-        st.success("🟢 Gemini API Key active (`GEMINI_API_KEY`)")
-        api_key = secret_gemini_key
-        st.session_state.agent.set_api_key(api_key)
+    if has_secrets_key:
+        st.success("🟢 Groq API Key active (`st.secrets['GROQ_API_KEY']`)")
+        st.session_state.agent.set_api_key(secret_groq_key)
     else:
         api_key = st.text_input(
-            "Groq API Key (or Gemini Key)",
+            "Groq API Key",
             value=st.session_state.agent.api_key or "",
             type="password",
-            placeholder="gsk_... or AIzaSy...",
-            help="Enter your Groq API key (starts with gsk_) for openai/gpt-oss-120b or Gemini key. Set GROQ_API_KEY in Secrets."
+            placeholder="gsk_...",
+            help="Enter your Groq API key (starts with gsk_) from console.groq.com/keys. In Streamlit Cloud, add GROQ_API_KEY in App Settings > Secrets."
         )
         if api_key:
             st.session_state.agent.set_api_key(api_key)
-            if api_key.startswith("gsk_"):
-                st.success("✅ Groq API Key Active")
-            else:
-                st.success("✅ API Key Active")
+            st.success("✅ Groq API Key Active")
         else:
-            st.info("💡 Tip: Add `GROQ_API_KEY` to `.streamlit/secrets.toml` or Streamlit Cloud Secrets.")
+            st.warning("⚠️ Enter your Groq API Key (`gsk_...`) or set `GROQ_API_KEY` in Streamlit Secrets.")
 
     model_options = [
         "openai/gpt-oss-120b",
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
-        "gemini-2.0-flash",
+        "mixtral-8x7b-32768",
         "Custom Model...",
     ]
 
@@ -214,22 +200,16 @@ with st.sidebar:
     default_idx = model_options.index(secret_model) if secret_model in model_options else 0
 
     selected_option = st.selectbox(
-        "Select Model",
+        "Select Groq Model",
         options=model_options,
         index=default_idx,
-        help="openai/gpt-oss-120b runs with Groq ultra-low latency inference."
+        help="openai/gpt-oss-120b delivers ultra-low latency Groq inference for Menu RAG."
     )
 
     if selected_option == "Custom Model...":
-        custom_model = st.text_input("Enter Model Name", value="openai/gpt-oss-120b")
+        custom_model = st.text_input("Enter Groq Model Name", value="openai/gpt-oss-120b")
         c_val = custom_model.strip()
-        if c_val in ["3.7", "gemini-3.7"]:
-            active_model = "gemini-3.7-flash"
-        elif c_val in ["3.6", "gemini-3.6"]:
-            active_model = "gemini-3.6-flash"
-        elif c_val in ["3.8", "gemini-3.8"]:
-            active_model = "gemini-3.8-flash"
-        elif c_val in ["gpt-oss", "120b", "gpt-oss-120b"]:
+        if c_val in ["gpt-oss", "120b", "gpt-oss-120b"]:
             active_model = "openai/gpt-oss-120b"
         else:
             active_model = c_val or "openai/gpt-oss-120b"
@@ -288,7 +268,7 @@ with st.sidebar:
             st.markdown("---")
 
     st.markdown("---")
-    st.caption("🚀 Built for Hackathon | CrewAI + Google Gemini + Streamlit")
+    st.caption("⚡ Built for Hackathon | CrewAI + Groq (openai/gpt-oss-120b) + Streamlit")
 
 
 # ==========================================
@@ -302,7 +282,7 @@ st.markdown("""
         <span>🍽️ Menu<span class="brand-highlight">Flow</span> AI</span>
     </div>
     <div class="brand-subtitle">
-        Intelligent Culinary Concierge powered by <b>RAG (Retrieval-Augmented Generation)</b>, <b>CrewAI Multi-Agents</b>, and <b>Google Gemini</b>.
+        Intelligent Culinary Concierge powered by <b>RAG (Retrieval-Augmented Generation)</b>, <b>CrewAI Multi-Agents</b>, and <b>Groq (openai/gpt-oss-120b)</b>.
         Tell the agent what flavors you are thinking of eating, and it will analyze the menu ingredients to recommend the perfect dish.
     </div>
 </div>
@@ -355,13 +335,13 @@ if user_prompt:
         st.markdown(user_prompt)
 
     # 2. Check for API key
-    active_key = st.session_state.agent.api_key or secret_gemini_key
+    active_key = st.session_state.agent.api_key or secret_groq_key
     if not active_key:
         with st.chat_message("assistant"):
             error_msg = (
-                "⚠️ **Gemini API Key Required**\n\n"
-                "Please add `GEMINI_API_KEY` to your Streamlit secrets or enter it in the left sidebar. "
-                "You can get a free API key at [Google AI Studio](https://aistudio.google.com/app/apikey)."
+                "⚠️ **Groq API Key Required**\n\n"
+                "Please add `GROQ_API_KEY` to your Streamlit secrets or enter it in the left sidebar. "
+                "You can get a free API key at [Groq Console](https://console.groq.com/keys)."
             )
             st.warning(error_msg)
             st.session_state.messages.append({"role": "assistant", "content": error_msg})
