@@ -30,6 +30,8 @@ class CulinaryResearchAgent:
     @staticmethod
     def normalize_model_name(model_name: str) -> str:
         clean = (model_name or "").replace("models/", "").strip()
+        if not clean:
+            return "openai/gpt-oss-120b"
         if clean in ["3.7", "gemini-3.7"]:
             return "gemini-3.7-flash"
         elif clean in ["3.6", "gemini-3.6"]:
@@ -38,19 +40,124 @@ class CulinaryResearchAgent:
             return "gemini-3.8-flash"
         elif clean.startswith("3."):
             return f"gemini-{clean}-flash"
-        elif not clean:
-            return "gemini-3.7-flash"
+        elif clean in ["gpt-oss", "120b", "gpt-oss-120b"]:
+            return "openai/gpt-oss-120b"
         return clean
 
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-3.7-flash"):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model_name: str = "openai/gpt-oss-120b",
+        provider: str = "auto"
+    ):
+        self.api_key = (
+            api_key
+            or os.getenv("GROQ_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY", "")
+        )
+        self.provider = provider
         self.model_name = self.normalize_model_name(model_name)
+
+    @property
+    def is_groq(self) -> bool:
+        """
+        Determines whether the active configuration should use the Groq provider.
+        """
+        if self.provider == "groq":
+            return True
+        if self.provider == "gemini":
+            return False
+
+        key = (self.api_key or "").strip()
+        model = (self.model_name or "").lower()
+
+        if key.startswith("gsk_"):
+            return True
+        if key.startswith("AIza"):
+            return False
+
+        if "openai/" in model or "gpt-oss" in model or "llama" in model or "mixtral" in model or "gemma" in model:
+            return True
+        if "gemini" in model:
+            return False
+
+        if os.getenv("GROQ_API_KEY") and not os.getenv("GEMINI_API_KEY"):
+            return True
+
+        return True  # Default to Groq
 
     def set_api_key(self, api_key: str):
         self.api_key = api_key
 
     def set_model(self, model_name: str):
         self.model_name = self.normalize_model_name(model_name)
+
+    def _call_groq_rest(self, prompt: str, system_instruction: str = "") -> str:
+        """
+        Direct high-speed Groq REST API call (OpenAI-compatible).
+        Ultra-low latency inference for openai/gpt-oss-120b and Llama models.
+        """
+        if not self.api_key:
+            raise ValueError(
+                "Groq API Key is required. Please provide it in the sidebar or set GROQ_API_KEY in secrets."
+            )
+
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key.strip()}",
+            "Content-Type": "application/json"
+        }
+
+        messages = []
+        if system_instruction:
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
+
+        candidates = [self.model_name]
+        for fallback in ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+            if fallback not in candidates:
+                candidates.append(fallback)
+
+        last_error = ""
+        for cand in candidates:
+            payload = {
+                "model": cand,
+                "messages": messages,
+                "temperature": 0.4,
+                "max_tokens": 1500
+            }
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    self.model_name = cand
+                    return data["choices"][0]["message"]["content"]
+                elif resp.status_code == 404:
+                    last_error = resp.text
+                    continue
+                else:
+                    err_msg = resp.text
+                    try:
+                        err_json = resp.json()
+                        err_msg = err_json.get("error", {}).get("message", err_msg)
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"Groq API Error ({resp.status_code}): {err_msg}")
+            except requests.RequestException as req_err:
+                last_error = str(req_err)
+                continue
+
+        raise RuntimeError(f"Groq API Error: Failed with model '{self.model_name}'. Details: {last_error}")
+
+    def _call_llm(self, prompt: str, system_instruction: str = "") -> str:
+        """
+        Unified high-speed LLM call router supporting Groq (openai/gpt-oss-120b, Llama)
+        and Google Gemini.
+        """
+        if self.is_groq:
+            return self._call_groq_rest(prompt, system_instruction)
+        return self._call_gemini_rest(prompt, system_instruction)
 
     @classmethod
     def get_available_models(cls, api_key: str) -> List[str]:
@@ -216,13 +323,20 @@ class CulinaryResearchAgent:
         """
         Executes CrewAI multi-agent orchestration if CrewAI package is available.
         """
-        # Configure CrewAI LLM for Gemini
-        gemini_model_string = f"gemini/{self.model_name}"
-        llm = LLM(
-            model=gemini_model_string,
-            api_key=self.api_key,
-            temperature=0.3
-        )
+        # Configure CrewAI LLM for Groq or Gemini
+        if self.is_groq:
+            llm = LLM(
+                model=f"groq/{self.model_name}",
+                api_key=self.api_key,
+                temperature=0.3
+            )
+        else:
+            gemini_model_string = f"gemini/{self.model_name}"
+            llm = LLM(
+                model=gemini_model_string,
+                api_key=self.api_key,
+                temperature=0.3
+            )
 
         # Agent 1: Culinary Analyst
         analyst = Agent(
@@ -317,9 +431,10 @@ class CulinaryResearchAgent:
             except Exception as crew_err:
                 print(f"CrewAI execution notice: {crew_err}. Using direct Gemini Multi-Agent pipeline.")
 
-        # Step 3: Direct Multi-Agent Gemini Pipeline (Fast, robust, Streamlit Cloud friendly)
+        # Step 3: Direct Multi-Agent LLM Pipeline (Groq / Gemini - Fast, robust, Streamlit Cloud friendly)
+        engine_brand = "Groq" if self.is_groq else "Google Gemini"
         system_instruction = (
-            "You are MenuFlow AI, an intelligent Culinary Concierge powered by RAG and Google Gemini.\n"
+            f"You are MenuFlow AI, an intelligent Culinary Concierge powered by RAG and {engine_brand}.\n"
             "Your job is to read the restaurant's menu with its exact ingredients, analyze the taste and flavor "
             "profiles created by those ingredients, and recommend the best dish to a customer who is unsure what to order.\n\n"
             "GUIDELINES:\n"
@@ -355,10 +470,10 @@ class CulinaryResearchAgent:
 Format your output in clean Markdown with clear section headers, bold names, and appetizing descriptions.
 """
 
-        llm_response = self._call_gemini_rest(prompt, system_instruction=system_instruction)
+        llm_response = self._call_llm(prompt, system_instruction=system_instruction)
 
         return {
-            "engine": "Gemini RAG Agent Pipeline",
+            "engine": f"Groq Ultra-Fast RAG Agent ({self.model_name})" if self.is_groq else f"Gemini RAG Agent ({self.model_name})",
             "output": llm_response,
             "matching_items": matching_items,
             "tool_calls": [

@@ -31,10 +31,14 @@ def get_secret(key: str, default: str = "") -> str:
     except Exception:
         return os.getenv(key, default)
 
-# Check if Gemini key is available in Streamlit Secrets
+# Check if Groq or Gemini key is available in Streamlit Secrets
+secret_groq_key = get_secret("GROQ_API_KEY", "")
 secret_gemini_key = get_secret("GEMINI_API_KEY", "")
-secret_model = get_secret("GEMINI_MODEL", "gemini-3.7-flash")
-has_secrets_key = bool(secret_gemini_key and not secret_gemini_key.startswith("your_"))
+secret_model = get_secret("GROQ_MODEL", get_secret("GEMINI_MODEL", "openai/gpt-oss-120b"))
+
+has_groq_key = bool(secret_groq_key and not secret_groq_key.startswith("your_"))
+has_gemini_key = bool(secret_gemini_key and not secret_gemini_key.startswith("your_"))
+has_secrets_key = has_groq_key or has_gemini_key
 
 # Original MenuFlow Branding & Styling
 st.markdown("""
@@ -166,35 +170,41 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # 1. Gemini API Key Configuration
+    # 1. LLM API Key Configuration (Groq & Gemini)
     st.subheader("🔑 LLM Configuration")
     
-    if has_secrets_key:
-        st.success("🟢 API Key loaded via Streamlit Secrets (`st.secrets`)")
+    if has_groq_key:
+        st.success("🟢 Groq API Key active (`GROQ_API_KEY`)")
+        api_key = secret_groq_key
+        st.session_state.agent.set_api_key(api_key)
+    elif has_gemini_key:
+        st.success("🟢 Gemini API Key active (`GEMINI_API_KEY`)")
         api_key = secret_gemini_key
+        st.session_state.agent.set_api_key(api_key)
     else:
         api_key = st.text_input(
-            "Google Gemini API Key",
+            "Groq API Key (or Gemini Key)",
             value=st.session_state.agent.api_key or "",
             type="password",
-            placeholder="AIzaSy...",
-            help="When deployed on Streamlit Cloud, add GEMINI_API_KEY in App Settings > Secrets."
+            placeholder="gsk_... or AIzaSy...",
+            help="Enter your Groq API key (starts with gsk_) for openai/gpt-oss-120b or Gemini key. Set GROQ_API_KEY in Secrets."
         )
         if api_key:
             st.session_state.agent.set_api_key(api_key)
-            st.success("✅ Gemini API Key Active")
+            if api_key.startswith("gsk_"):
+                st.success("✅ Groq API Key Active")
+            else:
+                st.success("✅ API Key Active")
         else:
-            st.info("💡 Tip: Add `GEMINI_API_KEY` to `.streamlit/secrets.toml` or Streamlit Cloud Secrets.")
+            st.info("💡 Tip: Add `GROQ_API_KEY` to `.streamlit/secrets.toml` or Streamlit Cloud Secrets.")
 
     model_options = [
+        "openai/gpt-oss-120b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
         "gemini-3.7-flash",
         "gemini-3.6-flash",
-        "gemini-3.8-flash",
         "gemini-2.0-flash",
-        "gemini-2.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
         "Custom Model...",
     ]
 
@@ -207,11 +217,11 @@ with st.sidebar:
         "Select Model",
         options=model_options,
         index=default_idx,
-        help="Select Gemini model version (3.7, 3.6, 3.8, 2.0, etc.). Automatic version fallback is enabled."
+        help="openai/gpt-oss-120b runs with Groq ultra-low latency inference."
     )
 
     if selected_option == "Custom Model...":
-        custom_model = st.text_input("Enter Model Name (e.g. 3.7, 3.6, gemini-3.7-flash)", value="3.7")
+        custom_model = st.text_input("Enter Model Name", value="openai/gpt-oss-120b")
         c_val = custom_model.strip()
         if c_val in ["3.7", "gemini-3.7"]:
             active_model = "gemini-3.7-flash"
@@ -219,8 +229,10 @@ with st.sidebar:
             active_model = "gemini-3.6-flash"
         elif c_val in ["3.8", "gemini-3.8"]:
             active_model = "gemini-3.8-flash"
+        elif c_val in ["gpt-oss", "120b", "gpt-oss-120b"]:
+            active_model = "openai/gpt-oss-120b"
         else:
-            active_model = c_val or "gemini-3.7-flash"
+            active_model = c_val or "openai/gpt-oss-120b"
     else:
         active_model = selected_option
 
