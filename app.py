@@ -268,7 +268,11 @@ with st.sidebar:
             st.markdown("---")
 
     st.markdown("---")
-    st.caption("⚡ Built for Hackathon | CrewAI + Groq (openai/gpt-oss-120b) + Streamlit")
+    if st.button("🗑️ Clear Chat History", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+
+    st.caption("⚡ MenuFlow AI • **Groq Pure v2.1 (openai/gpt-oss-120b)**")
 
 
 # ==========================================
