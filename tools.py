@@ -364,6 +364,7 @@ class MenuRAGEngine:
                 f"**Dish #{idx}: {item.get('name')}** (${item.get('price', 0):.2f})\n"
                 f"- Category: {item.get('category', 'General')}\n"
                 f"- Spice Level: {item.get('spice_level', 'Not specified')}\n"
+                f"- Est. Wait Time: {item.get('wait_time', '15-20 mins')}\n"
                 f"- Full Ingredients: {ings}\n"
                 f"- Flavor Profile: {item.get('flavor_profile', 'N/A')}\n"
                 f"- Dietary: {', '.join(item.get('dietary', [])) or 'Standard'}\n"
