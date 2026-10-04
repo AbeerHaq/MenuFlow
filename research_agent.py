@@ -37,22 +37,62 @@ class CulinaryResearchAgent:
     def set_model(self, model_name: str):
         self.model_name = model_name
 
+    @classmethod
+    def get_available_models(cls, api_key: str) -> List[str]:
+        """
+        Dynamically query Google Generative Language ModelService.ListModels
+        to find all models that support 'generateContent' for this API key.
+        """
+        if not api_key:
+            return []
+        for api_version in ["v1beta", "v1"]:
+            try:
+                url = f"https://generativelanguage.googleapis.com/{api_version}/models?key={api_key}"
+                resp = requests.get(url, timeout=8)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = []
+                    for m in data.get("models", []):
+                        methods = m.get("supportedGenerationMethods", [])
+                        if "generateContent" in methods:
+                            name = m.get("name", "").replace("models/", "")
+                            models.append(name)
+                    if models:
+                        return models
+            except Exception:
+                continue
+        return []
+
     def _call_gemini_rest(self, prompt: str, system_instruction: str = "") -> str:
         """
         Direct high-speed Google Gemini REST API call.
-        Ensures 100% reliability on Streamlit Community Cloud without gRPC/Protobuf conflicts.
+        Supports gemini-3.8-flash, gemini-2.0-flash, gemini-1.5-flash, and dynamic model discovery.
+        Ensures 100% reliability on Streamlit Community Cloud with automatic version & model fallback.
         """
         if not self.api_key:
             raise ValueError(
                 "Google Gemini API Key is required. Please provide it in the sidebar or set GEMINI_API_KEY in secrets."
             )
 
-        # Map friendly model names to Gemini endpoint names
-        clean_model = self.model_name
-        if not clean_model.startswith("gemini-"):
-            clean_model = "gemini-1.5-flash"
+        # Clean model string
+        primary_model = self.model_name.replace("models/", "").strip()
+        if not primary_model:
+            primary_model = "gemini-2.0-flash"
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={self.api_key}"
+        # Candidate models to try in order
+        candidate_models = [primary_model]
+        common_fallbacks = [
+            "gemini-2.0-flash",
+            "gemini-2.5-flash",
+            "gemini-3.8-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-2.0-flash-exp",
+            "gemini-pro",
+        ]
+        for fm in common_fallbacks:
+            if fm not in candidate_models:
+                candidate_models.append(fm)
+
         headers = {"Content-Type": "application/json"}
         
         contents = []
@@ -79,22 +119,64 @@ class CulinaryResearchAgent:
             }
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        
-        if response.status_code != 200:
-            err_msg = response.text
-            try:
-                err_json = response.json()
-                err_msg = err_json.get("error", {}).get("message", err_msg)
-            except Exception:
-                pass
-            raise RuntimeError(f"Gemini API Error ({response.status_code}): {err_msg}")
+        # Try across candidates and API versions
+        last_error_code = 0
+        last_error_msg = ""
 
-        data = response.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
-            return "Unable to parse response from Gemini model."
+        for candidate in candidate_models:
+            for api_version in ["v1beta", "v1"]:
+                url = f"https://generativelanguage.googleapis.com/{api_version}/models/{candidate}:generateContent?key={self.api_key}"
+                try:
+                    response = requests.post(url, headers=headers, json=payload, timeout=25)
+                    if response.status_code == 200:
+                        data = response.json()
+                        try:
+                            # Update active model name to what worked
+                            self.model_name = candidate
+                            return data["candidates"][0]["content"]["parts"][0]["text"]
+                        except (KeyError, IndexError):
+                            return "Unable to parse response from Gemini model."
+                    elif response.status_code == 404:
+                        # Model not recognized in this API version; try next candidate
+                        last_error_code = 404
+                        last_error_msg = response.text
+                        continue
+                    else:
+                        # Non-404 error (e.g. 400 Bad Request, 403 Forbidden, 429 Quota)
+                        err_msg = response.text
+                        try:
+                            err_json = response.json()
+                            err_msg = err_json.get("error", {}).get("message", err_msg)
+                        except Exception:
+                            pass
+                        raise RuntimeError(f"Gemini API Error ({response.status_code}): {err_msg}")
+                except requests.RequestException as req_err:
+                    last_error_msg = str(req_err)
+                    continue
+
+        # If static candidates returned 404, dynamically query Google's ModelService.ListModels
+        available_models = self.get_available_models(self.api_key)
+        if available_models:
+            # Pick the best flash model or first available
+            best_model = next((m for m in available_models if "flash" in m), available_models[0])
+            for api_version in ["v1beta", "v1"]:
+                url = f"https://generativelanguage.googleapis.com/{api_version}/models/{best_model}:generateContent?key={self.api_key}"
+                try:
+                    resp = requests.post(url, headers=headers, json=payload, timeout=25)
+                    if resp.status_code == 200:
+                        self.model_name = best_model
+                        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                except Exception:
+                    continue
+
+            avail_summary = ", ".join(available_models[:6])
+            raise RuntimeError(
+                f"Model '{primary_model}' not found (404). Supported models on your Google AI account: {avail_summary}"
+            )
+
+        raise RuntimeError(
+            f"Gemini API Error (404): Model '{primary_model}' was not found. Please verify your Gemini API key has access to modern models (e.g., gemini-2.0-flash or gemini-3.8-flash)."
+        )
 
     def run_crewai_flow(self, user_query: str) -> Dict[str, Any]:
         """

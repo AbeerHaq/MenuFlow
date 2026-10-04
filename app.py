@@ -33,7 +33,7 @@ def get_secret(key: str, default: str = "") -> str:
 
 # Check if Gemini key is available in Streamlit Secrets
 secret_gemini_key = get_secret("GEMINI_API_KEY", "")
-secret_model = get_secret("GEMINI_MODEL", "gemini-1.5-flash")
+secret_model = get_secret("GEMINI_MODEL", "gemini-2.0-flash")
 has_secrets_key = bool(secret_gemini_key and not secret_gemini_key.startswith("your_"))
 
 # Original MenuFlow Branding & Styling
@@ -186,13 +186,35 @@ with st.sidebar:
         else:
             st.info("💡 Tip: Add `GEMINI_API_KEY` to `.streamlit/secrets.toml` or Streamlit Cloud Secrets.")
 
-    model_choice = st.selectbox(
+    model_options = [
+        "gemini-2.0-flash",
+        "gemini-3.8-flash",
+        "gemini-2.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "Custom Model...",
+    ]
+
+    if secret_model and secret_model not in model_options:
+        model_options.insert(0, secret_model)
+
+    default_idx = model_options.index(secret_model) if secret_model in model_options else 0
+
+    selected_option = st.selectbox(
         "Select Model",
-        options=["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
-        index=0,
-        help="gemini-1.5-flash is fast, lightweight, and ideal for menu RAG."
+        options=model_options,
+        index=default_idx,
+        help="gemini-2.0-flash / gemini-3.8-flash are modern flash models for culinary RAG. Automatic fallback is enabled."
     )
-    st.session_state.agent.set_model(model_choice)
+
+    if selected_option == "Custom Model...":
+        custom_model = st.text_input("Enter Model Name", value="gemini-3.8-flash")
+        active_model = custom_model.strip() or "gemini-2.0-flash"
+    else:
+        active_model = selected_option
+
+    st.session_state.agent.set_model(active_model)
 
     st.markdown("---")
 
