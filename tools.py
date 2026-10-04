@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 try:
     from crewai.tools import tool
     HAS_CREWAI = True
-except ImportError:
+except Exception:
     HAS_CREWAI = False
     # Fallback decorator if crewai is loading
     def tool(name_or_func=None, **kwargs):
@@ -26,7 +26,7 @@ except ImportError:
 try:
     from duckduckgo_search import DDGS
     HAS_DDGS = True
-except ImportError:
+except Exception:
     HAS_DDGS = False
 
 try:

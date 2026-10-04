@@ -17,7 +17,7 @@ from tools import GLOBAL_RAG_ENGINE, menu_rag_tool, duckduckgo_search_tool
 try:
     from crewai import Agent, Task, Crew, Process, LLM
     HAS_CREWAI = True
-except ImportError:
+except Exception:
     HAS_CREWAI = False
 
 
