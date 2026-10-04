@@ -180,6 +180,10 @@ if "customer_name" not in st.session_state:
     st.session_state.customer_name = "Alex Morgan"
 if "customer_phone" not in st.session_state:
     st.session_state.customer_phone = "+1 (555) 019-8834"
+if "customer_phone_entered" not in st.session_state:
+    st.session_state.customer_phone_entered = False
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
 
 # 3. Menu Dishes State
 if "menu_items" not in st.session_state:
@@ -339,14 +343,37 @@ if active_role == "🍴 Customer Portal (Dining)":
     </div>
     """, unsafe_allow_html=True)
 
-    # Customer Profile Contact Info Box
-    with st.expander("👤 **Customer Contact Details** (Required so restaurant can reach you)", expanded=False):
-        c_col1, c_col2 = st.columns([1, 1])
-        with c_col1:
-            st.session_state.customer_name = st.text_input("Your Full Name", value=st.session_state.customer_name)
-        with c_col2:
-            st.session_state.customer_phone = st.text_input("Phone Number (SMS / Call for updates)", value=st.session_state.customer_phone)
-        st.caption("📱 The restaurant will notify you via phone when your order status updates.")
+    # Customer Phone Entry Gate
+    if not st.session_state.customer_phone_entered:
+        st.markdown(f"""
+        <div style="background: white; border-radius: 16px; padding: 26px; border: 1px solid #e2e8f0; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.03);">
+            <h3 style="margin-top:0; color: #0f172a;">📱 Enter Your Mobile Number to View Menu & Order</h3>
+            <p style="color: #64748b; font-size: 0.95rem;">
+                No account or password required! Just enter your mobile number so <b>{rest['name']}</b> kitchen can contact you and notify you when your table order is ready.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        with st.form("customer_phone_login_form"):
+            p_val = st.text_input("Mobile / Phone Number *", value="", placeholder="+1 (555) 019-8834")
+            n_val = st.text_input("Your Name (Optional)", value="Guest", placeholder="Your name")
+            c_sub = st.form_submit_button("🚀 Enter & View Restaurant Menu", type="primary", use_container_width=True)
+            if c_sub:
+                if not p_val.strip():
+                    st.error("Please enter your phone number so the restaurant can contact you.")
+                else:
+                    st.session_state.customer_phone = p_val.strip()
+                    st.session_state.customer_name = n_val.strip() or "Guest"
+                    st.session_state.customer_phone_entered = True
+                    st.rerun()
+    else:
+        # Customer is authenticated with phone number
+        b_c1, b_c2 = st.columns([4, 1])
+        with b_c1:
+            st.info(f"📱 Seated at: **{rest['table']}** &nbsp;•&nbsp; Customer: **{st.session_state.customer_name}** (`{st.session_state.customer_phone}`)")
+        with b_c2:
+            if st.button("✏️ Change Phone", use_container_width=True):
+                st.session_state.customer_phone_entered = False
+                st.rerun()
 
     # Live Order Tracker if user has placed an order
     if st.session_state.current_customer_order_id:
@@ -579,11 +606,49 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-    admin_tab1, admin_tab2, admin_tab3 = st.tabs([
-        f"🛎️ Live Incoming Orders ({len(st.session_state.orders)})",
-        f"📋 Menu & Dish Management ({len(st.session_state.menu_items)} dishes)",
-        "⚙️ Restaurant Settings"
-    ])
+    if not st.session_state.admin_logged_in:
+        st.markdown(f"""
+        <div style="background: white; border-radius: 16px; padding: 26px; border: 1px solid #e2e8f0; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.03);">
+            <h3 style="margin-top:0; color: #1e1b4b;">🔐 Restaurant Staff & Owner Login</h3>
+            <p style="color: #64748b; font-size: 0.95rem;">
+                Sign in with your restaurant administrator credentials to manage live kitchen orders, menu dish availability, and restaurant settings.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.info("💡 **Hackathon Judge Credentials:** `admin@thegrandbistro.com` &nbsp;|&nbsp; Password: `admin123`")
+
+        with st.form("admin_login_box"):
+            a_email = st.text_input("Manager Email Address", value="admin@thegrandbistro.com")
+            a_pass = st.text_input("Password", type="password", value="admin123")
+            a_sub = st.form_submit_button("Sign In to Kitchen Dashboard", type="primary", use_container_width=True)
+            if a_sub:
+                if a_email.strip() == "admin@thegrandbistro.com" and a_pass.strip() == "admin123":
+                    st.session_state.admin_logged_in = True
+                    st.success("Login successful! Welcome to the kitchen dashboard.")
+                    st.rerun()
+                else:
+                    st.error("Invalid email or password. Please use the demo credentials provided above.")
+
+        if st.button("⚡ 1-Click Judge Demo Login (Skip Typing)", use_container_width=True):
+            st.session_state.admin_logged_in = True
+            st.rerun()
+
+    else:
+        # Logged-in Header Bar with Log Out
+        a_bar1, a_bar2 = st.columns([4, 1])
+        with a_bar1:
+            st.success("🟢 Authenticated: **The Grand Bistro Kitchen Manager** (`admin@thegrandbistro.com`)")
+        with a_bar2:
+            if st.button("🚪 Log Out", use_container_width=True):
+                st.session_state.admin_logged_in = False
+                st.rerun()
+
+        admin_tab1, admin_tab2, admin_tab3 = st.tabs([
+            f"🛎️ Live Incoming Orders ({len(st.session_state.orders)})",
+            f"📋 Menu & Dish Management ({len(st.session_state.menu_items)} dishes)",
+            "⚙️ Restaurant Settings"
+        ])
 
     # ---------------------------------------------
     # ADMIN TAB 1: LIVE ORDERS MANAGEMENT
