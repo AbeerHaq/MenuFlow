@@ -365,15 +365,18 @@ if active_role == "🍴 Customer Portal (Dining)":
                     st.session_state.customer_name = n_val.strip() or "Guest"
                     st.session_state.customer_phone_entered = True
                     st.rerun()
-    else:
-        # Customer is authenticated with phone number
-        b_c1, b_c2 = st.columns([4, 1])
-        with b_c1:
-            st.info(f"📱 Seated at: **{rest['table']}** &nbsp;•&nbsp; Customer: **{st.session_state.customer_name}** (`{st.session_state.customer_phone}`)")
-        with b_c2:
-            if st.button("✏️ Change Phone", use_container_width=True):
-                st.session_state.customer_phone_entered = False
-                st.rerun()
+
+        # Halt rendering until phone is entered
+        st.stop()
+
+    # Customer is authenticated with phone number
+    b_c1, b_c2 = st.columns([4, 1])
+    with b_c1:
+        st.info(f"📱 Seated at: **{rest['table']}** &nbsp;•&nbsp; Customer: **{st.session_state.customer_name}** (`{st.session_state.customer_phone}`)")
+    with b_c2:
+        if st.button("✏️ Change Phone", use_container_width=True):
+            st.session_state.customer_phone_entered = False
+            st.rerun()
 
     # Live Order Tracker if user has placed an order
     if st.session_state.current_customer_order_id:
@@ -634,21 +637,23 @@ else:
             st.session_state.admin_logged_in = True
             st.rerun()
 
-    else:
-        # Logged-in Header Bar with Log Out
-        a_bar1, a_bar2 = st.columns([4, 1])
-        with a_bar1:
-            st.success("🟢 Authenticated: **The Grand Bistro Kitchen Manager** (`admin@thegrandbistro.com`)")
-        with a_bar2:
-            if st.button("🚪 Log Out", use_container_width=True):
-                st.session_state.admin_logged_in = False
-                st.rerun()
+        # Halt rendering until staff logs in
+        st.stop()
 
-        admin_tab1, admin_tab2, admin_tab3 = st.tabs([
-            f"🛎️ Live Incoming Orders ({len(st.session_state.orders)})",
-            f"📋 Menu & Dish Management ({len(st.session_state.menu_items)} dishes)",
-            "⚙️ Restaurant Settings"
-        ])
+    # Logged-in Header Bar with Log Out
+    a_bar1, a_bar2 = st.columns([4, 1])
+    with a_bar1:
+        st.success("🟢 Authenticated: **The Grand Bistro Kitchen Manager** (`admin@thegrandbistro.com`)")
+    with a_bar2:
+        if st.button("🚪 Log Out", use_container_width=True):
+            st.session_state.admin_logged_in = False
+            st.rerun()
+
+    admin_tab1, admin_tab2, admin_tab3 = st.tabs([
+        f"🛎️ Live Incoming Orders ({len(st.session_state.orders)})",
+        f"📋 Menu & Dish Management ({len(st.session_state.menu_items)} dishes)",
+        "⚙️ Restaurant Settings"
+    ])
 
     # ---------------------------------------------
     # ADMIN TAB 1: LIVE ORDERS MANAGEMENT
