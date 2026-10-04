@@ -27,15 +27,30 @@ class CulinaryResearchAgent:
     Follows CrewAI agent & task architecture.
     """
 
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-1.5-flash"):
+    @staticmethod
+    def normalize_model_name(model_name: str) -> str:
+        clean = (model_name or "").replace("models/", "").strip()
+        if clean in ["3.7", "gemini-3.7"]:
+            return "gemini-3.7-flash"
+        elif clean in ["3.6", "gemini-3.6"]:
+            return "gemini-3.6-flash"
+        elif clean in ["3.8", "gemini-3.8"]:
+            return "gemini-3.8-flash"
+        elif clean.startswith("3."):
+            return f"gemini-{clean}-flash"
+        elif not clean:
+            return "gemini-3.7-flash"
+        return clean
+
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-3.7-flash"):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
-        self.model_name = model_name
+        self.model_name = self.normalize_model_name(model_name)
 
     def set_api_key(self, api_key: str):
         self.api_key = api_key
 
     def set_model(self, model_name: str):
-        self.model_name = model_name
+        self.model_name = self.normalize_model_name(model_name)
 
     @classmethod
     def get_available_models(cls, api_key: str) -> List[str]:
@@ -74,17 +89,36 @@ class CulinaryResearchAgent:
                 "Google Gemini API Key is required. Please provide it in the sidebar or set GEMINI_API_KEY in secrets."
             )
 
-        # Clean model string
+        # Clean & normalize model string (handles "3.6", "3.7", "3.8", "gemini-3.6", "gemini-3.7", etc.)
         primary_model = self.model_name.replace("models/", "").strip()
-        if not primary_model:
-            primary_model = "gemini-2.0-flash"
+        if primary_model in ["3.7", "gemini-3.7"]:
+            primary_model = "gemini-3.7-flash"
+        elif primary_model in ["3.6", "gemini-3.6"]:
+            primary_model = "gemini-3.6-flash"
+        elif primary_model in ["3.8", "gemini-3.8"]:
+            primary_model = "gemini-3.8-flash"
+        elif primary_model.startswith("3."):
+            primary_model = f"gemini-{primary_model}-flash"
+        elif not primary_model:
+            primary_model = "gemini-3.7-flash"
 
         # Candidate models to try in order
         candidate_models = [primary_model]
+        if "3.7" in primary_model:
+            for variant in ["gemini-3.7-flash", "gemini-3.7-pro", "gemini-3.7"]:
+                if variant not in candidate_models:
+                    candidate_models.append(variant)
+        elif "3.6" in primary_model:
+            for variant in ["gemini-3.6-flash", "gemini-3.6-pro", "gemini-3.6"]:
+                if variant not in candidate_models:
+                    candidate_models.append(variant)
+
         common_fallbacks = [
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-3.8-flash",
             "gemini-2.0-flash",
             "gemini-2.5-flash",
-            "gemini-3.8-flash",
             "gemini-1.5-flash-latest",
             "gemini-2.0-flash-exp",
             "gemini-pro",

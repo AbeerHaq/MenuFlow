@@ -33,7 +33,7 @@ def get_secret(key: str, default: str = "") -> str:
 
 # Check if Gemini key is available in Streamlit Secrets
 secret_gemini_key = get_secret("GEMINI_API_KEY", "")
-secret_model = get_secret("GEMINI_MODEL", "gemini-2.0-flash")
+secret_model = get_secret("GEMINI_MODEL", "gemini-3.7-flash")
 has_secrets_key = bool(secret_gemini_key and not secret_gemini_key.startswith("your_"))
 
 # Original MenuFlow Branding & Styling
@@ -187,8 +187,10 @@ with st.sidebar:
             st.info("💡 Tip: Add `GEMINI_API_KEY` to `.streamlit/secrets.toml` or Streamlit Cloud Secrets.")
 
     model_options = [
-        "gemini-2.0-flash",
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
         "gemini-3.8-flash",
+        "gemini-2.0-flash",
         "gemini-2.5-flash",
         "gemini-1.5-flash-latest",
         "gemini-1.5-flash",
@@ -205,12 +207,20 @@ with st.sidebar:
         "Select Model",
         options=model_options,
         index=default_idx,
-        help="gemini-2.0-flash / gemini-3.8-flash are modern flash models for culinary RAG. Automatic fallback is enabled."
+        help="Select Gemini model version (3.7, 3.6, 3.8, 2.0, etc.). Automatic version fallback is enabled."
     )
 
     if selected_option == "Custom Model...":
-        custom_model = st.text_input("Enter Model Name", value="gemini-3.8-flash")
-        active_model = custom_model.strip() or "gemini-2.0-flash"
+        custom_model = st.text_input("Enter Model Name (e.g. 3.7, 3.6, gemini-3.7-flash)", value="3.7")
+        c_val = custom_model.strip()
+        if c_val in ["3.7", "gemini-3.7"]:
+            active_model = "gemini-3.7-flash"
+        elif c_val in ["3.6", "gemini-3.6"]:
+            active_model = "gemini-3.6-flash"
+        elif c_val in ["3.8", "gemini-3.8"]:
+            active_model = "gemini-3.8-flash"
+        else:
+            active_model = c_val or "gemini-3.7-flash"
     else:
         active_model = selected_option
 
